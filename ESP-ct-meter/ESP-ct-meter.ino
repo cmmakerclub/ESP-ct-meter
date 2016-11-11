@@ -1,17 +1,40 @@
-
-/* choose ones */
-//#define device1
-//#define device2
-//#define device3
-
-
-#define LED_vcc   4
-#define LED_gnd   5
-
-
+#include <Arduino.h>
+#include <CMMC_Manager.h>
+#include "CMMC_Interval.hpp"
 #include <ESP8266WiFi.h>
+#include <ArduinoJson.h>
+#include <DHT.h>
+#include <MqttConnector.h>
+#include "init_mqtt.h"
+#include <Adafruit_NeoPixel.h>
+#ifdef __AVR__
+#include <avr/power.h>
+#endif
 #include <WiFiUdp.h>
 #include <Ticker.h>
+#include "_publish.h"
+#include "_receive.h"
+
+const char* MQTT_HOST        = "mqtt.espert.io";
+const char* MQTT_USERNAME    = "";
+const char* MQTT_PASSWORD    = "";
+const char* MQTT_CLIENT_ID   = "";
+const char* MQTT_PREFIX      = "/CMMC";
+const int MQTT_PORT           = 1883;
+const int PUBLISH_EVERY       = 2000;
+const char *DEVICE_NAME = "CMMC-CT-001";
+
+#define BUTTON_INPUT_PIN 0
+CMMC_Manager manager(BUTTON_INPUT_PIN, LED_BUILTIN);
+
+MqttConnector *mqtt;
+
+/* choose ones */
+#define device1
+//#define device2
+//#define device3
+#define LED_vcc   4
+#define LED_gnd   5
 
 byte dot_state = 0;
 unsigned long epoch ;
@@ -21,8 +44,10 @@ int ss;
 int force_update = 1;
 Ticker second_tick;
 
-const char* ssid     = "ESPERT-3020";
-const char* pass     = "espertap";
+uint32_t data_sum = 1;
+uint32_t data_count = 1;
+float data = 0;
+uint32_t time_now, time_prev_1, time_prev_2, time_prev_3, time_prev_4;
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
@@ -35,103 +60,59 @@ byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing pack
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udp;
 
-void init_hardware()
-{
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(LED_vcc, OUTPUT);
-  pinMode(LED_gnd, OUTPUT);
-
-  Serial.begin(115200);
-  delay(10);
-  Serial.println();
-  Serial.println();
-  //set pins to output so you can control the shift register
-
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  Serial.println("Starting UDP");
-  udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(udp.localPort());
+void Push_data () {
+  data = (float)data_sum / (float)data_count;
+  int tmp = data / 10;
+  data = tmp;
+  data /= 10;
+  data_sum = 0;
+  data_count = 0;
+  Serial.println(data);
+  uploadThingsSpeak(data);
+  digitalWrite(LED_vcc, HIGH);
+  delay(3000);
+  digitalWrite(LED_vcc, LOW);
 }
 
-uint32_t data_sum = 1;
-uint32_t data_count = 1;
-float data = 0;
-uint32_t time_now, time_prev_1, time_prev_2, time_prev_3, time_prev_4;
+void uploadThingsSpeak(float data) {
+  static const char* host = "api.thingspeak.com";
+  static const char* apiKey = "EDEKTGVXZDFN3DO8";
 
-void setup()
-{
-  init_hardware();
-
-  NTP_get();
-  delay(100);
-
-  hh = (epoch % 86400L) / 3600;
-  mm = (epoch % 3600) / 60;
-  ss = (epoch % 60);
-
-  second_tick.attach(1, tick);
-}
-
-void loop()
-{
-  time_now = epoch;
-
-  if (time_now - time_prev_1 >= 60) { //update time
-    time_prev_1 = time_now;
-    NTP_get();
+  // Use WiFiClient class to create TCP connections
+  WiFiClient client;
+  const int httpPort = 80;
+  if (!client.connect(host, httpPort)) {
+    return;
   }
 
-  if (time_now % 60 >= 0 && time_now % 60 < 20 ) { //push data ch1
-    if (time_now - time_prev_2 >= 30 ) {
-      time_prev_2 = time_now;
+  // We now create a URI for the request
+  String url = "/update/";
+  //  url += streamId;
+  //-----------------------------------------------
+  url += "?key=";
+  url += apiKey;
+
 #ifdef device1
-      Serial.println("Push Ch1");
-      Push_data();
+  url += "&field1=";
+  url += data;
 #endif
 
-    }
-  }
-
-  if (time_now % 60 >= 20 && time_now % 60 < 40 ) { //push data ch2
-    if (time_now - time_prev_3 >= 30) {
-      time_prev_3 = time_now;
 #ifdef device2
-      Serial.println("Push Ch2");
-      Push_data();
+  url += "&field2=";
+  url += data;
 #endif
 
-    }
-  }
-
-  if (time_now % 60 >= 40 && time_now % 60 < 60 ) { //push data ch3
-    if (time_now - time_prev_4 >= 30) {
-      time_prev_4 = time_now;
 #ifdef device3
-      Serial.println("Push Ch3");
-      Push_data();
+  url += "&field3=";
+  url += data;
 #endif
+  //---------------------------------------------- -
 
-    }
-  }
 
-  data_sum += analogRead(A0);
-  data_count++;
-
-  delay(1);
+  // This will send the request to the server
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n\r\n");
 }
 
 void tick (void)
@@ -201,57 +182,89 @@ unsigned long sendNTPpacket(IPAddress& address)
   udp.endPacket();
 }
 
-void Push_data () {
-  data = (float)data_sum / (float)data_count;
-  int tmp = data / 10;
-  data = tmp;
-  data /= 10;
-  data_sum = 0;
-  data_count = 0;
-  Serial.println(data);
-  uploadThingsSpeak(data);
-  digitalWrite(LED_vcc, HIGH);
-  delay(3000);
-  digitalWrite(LED_vcc, LOW);
+void init_hardware()
+{
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_vcc, OUTPUT);
+  pinMode(LED_gnd, OUTPUT);
+  pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);
+
+  Serial.begin(115200);
+  delay(10);
+  Serial.println();
+  Serial.println();
+  
+  CMMC_Manager manager(0, LED_BUILTIN);
+  manager.start();
+  init_mqtt();
+  
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
 }
 
-void uploadThingsSpeak(float data) {
-  static const char* host = "api.thingspeak.com";
-  static const char* apiKey = "EDEKTGVXZDFN3DO8";
 
-  // Use WiFiClient class to create TCP connections
-  WiFiClient client;
-  const int httpPort = 80;
-  if (!client.connect(host, httpPort)) {
-    return;
+void setup()
+{
+  init_hardware();
+
+  NTP_get();
+  delay(100);
+
+  hh = (epoch % 86400L) / 3600;
+  mm = (epoch % 3600) / 60;
+  ss = (epoch % 60);
+
+  second_tick.attach(1, tick);
+}
+
+void loop()
+{
+  mqtt->loop();
+
+  time_now = epoch;
+
+  if (time_now - time_prev_1 >= 60) { //update time
+    time_prev_1 = time_now;
+    NTP_get();
   }
 
-  // We now create a URI for the request
-  String url = "/update/";
-  //  url += streamId;
-  //-----------------------------------------------
-  url += "?key=";
-  url += apiKey;
-
+  if (time_now % 60 >= 0 && time_now % 60 < 20 ) { //push data ch1
+    if (time_now - time_prev_2 >= 30 ) {
+      time_prev_2 = time_now;
 #ifdef device1
-  url += "&field1=";
-  url += data;
+      Serial.println("Push Ch1");
+      Push_data();
 #endif
 
+    }
+  }
+
+  if (time_now % 60 >= 20 && time_now % 60 < 40 ) { //push data ch2
+    if (time_now - time_prev_3 >= 30) {
+      time_prev_3 = time_now;
 #ifdef device2
-  url += "&field2=";
-  url += data;
+      Serial.println("Push Ch2");
+      Push_data();
 #endif
 
+    }
+  }
+
+  if (time_now % 60 >= 40 && time_now % 60 < 60 ) { //push data ch3
+    if (time_now - time_prev_4 >= 30) {
+      time_prev_4 = time_now;
 #ifdef device3
-  url += "&field3=";
-  url += data;
+      Serial.println("Push Ch3");
+      Push_data();
 #endif
-  //---------------------------------------------- -
 
+    }
+  }
 
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "Connection: close\r\n\r\n");
+  data_sum += analogRead(A0);
+  data_count++;
+
+  delay(1);
 }
