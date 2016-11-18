@@ -1,6 +1,6 @@
 
 /* choose ones */
-//#define device1
+#define device1
 //#define device2
 //#define device3
 
@@ -8,10 +8,13 @@
 #define LED_vcc   4
 #define LED_gnd   5
 
-
+#include <CMMC_Manager.h>
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <Ticker.h>
+
+#define BUTTON_INPUT_PIN 0
+CMMC_Manager manager(BUTTON_INPUT_PIN, LED_BUILTIN);
 
 byte dot_state = 0;
 unsigned long epoch ;
@@ -20,9 +23,6 @@ int mm;
 int ss;
 int force_update = 1;
 Ticker second_tick;
-
-const char* ssid     = "ESPERT-3020";
-const char* pass     = "espertap";
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
@@ -46,21 +46,9 @@ void init_hardware()
   Serial.println();
   Serial.println();
   //set pins to output so you can control the shift register
-
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-
+  Serial.println("Manager Start");
+  manager.start();
+  
   Serial.println("Starting UDP");
   udp.begin(localPort);
   Serial.print("Local port: ");
@@ -74,6 +62,9 @@ uint32_t time_now, time_prev_1, time_prev_2, time_prev_3, time_prev_4;
 
 void setup()
 {
+  pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+
   init_hardware();
 
   NTP_get();
