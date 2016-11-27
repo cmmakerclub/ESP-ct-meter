@@ -4,7 +4,6 @@
 //#define device2
 //#define device3
 
-
 #define LED_vcc   4
 #define LED_gnd   5
 
@@ -26,7 +25,7 @@ Ticker second_tick;
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
+IPAddress timeServer(202, 44, 204, 114); // time.nist.gov NTP server
 
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 
@@ -48,11 +47,8 @@ void init_hardware()
   //set pins to output so you can control the shift register
   Serial.println("Manager Start");
   manager.start();
-  
-  Serial.println("Starting UDP");
-  udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(udp.localPort());
+
+
 }
 
 uint32_t data_sum = 1;
@@ -66,13 +62,18 @@ void setup()
   pinMode(LED_BUILTIN, OUTPUT);
 
   init_hardware();
-
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
   NTP_get();
   delay(100);
 
   hh = (epoch % 86400L) / 3600;
   mm = (epoch % 3600) / 60;
   ss = (epoch % 60);
+  Serial.printf("epoch = %d\r\n", epoch);
+  Serial.printf("hh = %d, mm = %d, ss = %d \r\n", hh, mm, ss);
 
   second_tick.attach(1, tick);
 }
@@ -135,7 +136,6 @@ void tick (void)
 
 void NTP_get(void)
 {
-
   sendNTPpacket(timeServer); // send an NTP packet to a time server
   delay(1000);
   int cb = udp.parsePacket();
@@ -154,8 +154,8 @@ void NTP_get(void)
     // combine the four bytes (two words) into a long integer
     // this is NTP time (seconds since Jan 1 1900):
     unsigned long secsSince1900 = highWord << 16 | lowWord;
-    // Serial.print("Seconds since Jan 1 1900 = " );
-    // Serial.println(secsSince1900);
+    Serial.print("Seconds since Jan 1 1900 = " );
+    Serial.println(secsSince1900);
 
     // now convert NTP time into everyday time:
     // Serial.print("Unix time = ");
