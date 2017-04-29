@@ -1,4 +1,3 @@
-
 /* choose ones */
 #define device1
 //#define device2
@@ -43,96 +42,12 @@ void init_hardware()
   Serial.begin(115200);
   delay(10);
   Serial.println();
-  Serial.println();
-  //set pins to output so you can control the shift register
-  Serial.println("Manager Start");
-  manager.start();
-
-
 }
 
 uint32_t data_sum = 1;
 uint32_t data_count = 1;
 float data = 0;
 uint32_t time_now, time_prev_1, time_prev_2, time_prev_3, time_prev_4;
-
-void setup()
-{
-  pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  init_hardware();
-  Serial.println("Starting UDP");
-  udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(udp.localPort());
-  NTP_get();
-  delay(100);
-
-  hh = (epoch % 86400L) / 3600;
-  mm = (epoch % 3600) / 60;
-  ss = (epoch % 60);
-  Serial.printf("epoch = %d\r\n", epoch);
-  Serial.printf("hh = %d, mm = %d, ss = %d \r\n", hh, mm, ss);
-
-  second_tick.attach(1, tick);
-}
-
-void loop()
-{
-  time_now = epoch;
-
-  if (time_now - time_prev_1 >= 60) { //update time
-    time_prev_1 = time_now;
-    NTP_get();
-  }
-
-  if (time_now % 60 >= 0 && time_now % 60 < 20 ) { //push data ch1
-    if (time_now - time_prev_2 >= 30 ) {
-      time_prev_2 = time_now;
-#ifdef device1
-      Serial.println("Push Ch1");
-      Push_data();
-#endif
-
-    }
-  }
-
-  if (time_now % 60 >= 20 && time_now % 60 < 40 ) { //push data ch2
-    if (time_now - time_prev_3 >= 30) {
-      time_prev_3 = time_now;
-#ifdef device2
-      Serial.println("Push Ch2");
-      Push_data();
-#endif
-
-    }
-  }
-
-  if (time_now % 60 >= 40 && time_now % 60 < 60 ) { //push data ch3
-    if (time_now - time_prev_4 >= 30) {
-      time_prev_4 = time_now;
-#ifdef device3
-      Serial.println("Push Ch3");
-      Push_data();
-#endif
-
-    }
-  }
-
-  data_sum += analogRead(A0);
-  data_count++;
-
-  delay(1);
-}
-
-void tick (void)
-{
-  epoch++; //Add a second
-  Serial.println(epoch % 60);
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-}
-
 
 void NTP_get(void)
 {
@@ -190,6 +105,88 @@ unsigned long sendNTPpacket(IPAddress& address)
   udp.beginPacket(address, 123); //NTP requests are to port 123
   udp.write(packetBuffer, NTP_PACKET_SIZE);
   udp.endPacket();
+}
+
+void setup()
+{
+  pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  init_hardware();
+
+  Serial.println("Manager Start");
+  manager.start();
+
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
+  delay(2000);
+
+  NTP_get();
+  delay(100);
+
+  hh = (epoch % 86400L) / 3600;
+  mm = (epoch % 3600) / 60;
+  ss = (epoch % 60);
+  Serial.printf("epoch = %d\r\n", epoch);
+  Serial.printf("hh = %d, mm = %d, ss = %d \r\n", hh, mm, ss);
+
+  second_tick.attach(1, tick);
+}
+
+void loop()
+{
+  time_now = epoch;
+
+  if (time_now - time_prev_1 >= 60) { //update time
+    time_prev_1 = time_now;
+    NTP_get();
+  }
+
+  if (time_now % 60 >= 0 && time_now % 60 < 20 ) { //push data ch1
+    if (time_now - time_prev_2 >= 30 ) {
+      time_prev_2 = time_now;
+#ifdef device1
+      Serial.println("Push Ch1");
+      Push_data();
+#endif
+
+    }
+  }
+
+  if (time_now % 60 >= 20 && time_now % 60 < 40 ) { //push data ch2
+    if (time_now - time_prev_3 >= 30) {
+      time_prev_3 = time_now;
+#ifdef device2
+      Serial.println("Push Ch2");
+      Push_data();
+#endif
+
+    }
+  }
+
+  if (time_now % 60 >= 40 && time_now % 60 < 60 ) { //push data ch3
+    if (time_now - time_prev_4 >= 30) {
+      time_prev_4 = time_now;
+#ifdef device3
+      Serial.println("Push Ch3");
+      Push_data();
+#endif
+
+    }
+  }
+  
+  data_sum += analogRead(A0);
+  data_count++;
+  delay(1);
+}
+
+void tick (void)
+{
+  epoch++; //Add a second
+  Serial.println(epoch % 60);
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
 
 void Push_data () {
